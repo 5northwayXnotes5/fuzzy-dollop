@@ -208,7 +208,7 @@ screen cheat_main_menu():
                                 hbox:
                                     spacing 5
                                     # Decrease
-                                    textbutton "[-1]":
+                                    textbutton "-1":
                                         text_font "DejaVuSans.ttf"
                                         text_size 16
                                         text_color "#bbb"
@@ -224,13 +224,13 @@ screen cheat_main_menu():
                                         size 18
                                         
                                     # Increase
-                                    textbutton "[+1]":
+                                    textbutton "+1":
                                         text_font "DejaVuSans.ttf"
                                         text_size 16
                                         text_color "#bbb"
                                         action Function(modify_variable, item['name'], val + 1)
 
-                                    textbutton "[+100]":
+                                    textbutton "+100":
                                         text_font "DejaVuSans.ttf"
                                         text_size 16
                                         text_color "#888"
@@ -244,7 +244,7 @@ screen cheat_main_menu():
                                     yalign 0.5
                             
                             elif item['is_obj']:
-                                text "[Object]":
+                                text "Object":
                                     font "DejaVuSans.ttf"
                                     color "#ffff00" 
                                     size 16
