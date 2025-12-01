@@ -1,34 +1,27 @@
 # ==============================================================================
-# UNIVERSAL REN'PY CHEAT MOD
-# Drop this file into the 'game/' folder of any Ren'Py game.
-# Press 'SHIFT+C' in-game to open the menu.
+# UNIVERSAL REN'PY CHEAT MOD (FIXED)
+# Drop this file into the 'game/' folder.
+# USAGE: Press 'SHIFT+C' OR click the tiny '★' in the top right.
 # ==============================================================================
 
 init python:
     import inspect
 
-    # Configuration for the mod
+    # --- Configuration ---
     class CheatConfig:
         def __init__(self):
             # variables to ignore (Ren'Py internals)
-            self.ignore_prefixes = ["_", "renpy", "config", "gui", "style", "layout", "theme"]
+            self.ignore_prefixes = ["_", "renpy", "config", "gui", "style", "layout", "theme", "persistent"]
             self.allowed_types = (int, float, bool, str)
             self.search_term = ""
-            self.current_layer = "store" # 'store' or object reference
-            self.object_stack = [] # For diving into objects
-
+            
     cheat_cfg = CheatConfig()
 
+    # --- Core Logic ---
     def get_variables(target_object=None):
-        """
-        Scans the target object (or global store) for editable variables.
-        Returns a list of tuples: (name, value, type)
-        """
         if target_object is None:
-            # We are looking at the global store
             source = renpy.python.store_dicts['store']
         else:
-            # We are looking at a class instance/object
             if hasattr(target_object, "__dict__"):
                 source = target_object.__dict__
             elif isinstance(target_object, dict):
@@ -39,28 +32,173 @@ init python:
         results = []
         
         for name, value in source.items():
-            # Filter out internals
             if any(name.startswith(p) for p in cheat_cfg.ignore_prefixes):
                 continue
             
-            # Filter by search term
             if cheat_cfg.search_term and cheat_cfg.search_term.lower() not in name.lower():
                 continue
 
-            # Check Types
-            # 1. Primitives we can edit directly
             if isinstance(value, cheat_cfg.allowed_types):
                 results.append({"name": name, "value": value, "type": type(value).__name__, "is_obj": False})
             
-            # 2. Objects we can dive into (Classes, Dicts)
             elif hasattr(value, "__dict__") or isinstance(value, dict):
-                # Ignore functions and modules
                 if not (inspect.ismodule(value) or inspect.isfunction(value) or inspect.ismethod(value)):
                     results.append({"name": name, "value": value, "type": "Object/Dict", "is_obj": True})
 
-        # Sort alphabetically
         results.sort(key=lambda x: x["name"])
         return results
+
+    def find_clue_keys():
+        source = renpy.python.store_dicts['store']
+        clues = []
+        suspicious_keywords = ["pass", "code", "pin", "key", "secret", "answer", "unlock"]
+        
+        for name, value in source.items():
+            if any(name.startswith(p) for p in cheat_cfg.ignore_prefixes):
+                continue
+            
+            if isinstance(value, (str, int)):
+                str_val = str(value)
+                name_lower = name.lower()
+                
+                is_suspicious_name = any(k in name_lower for k in suspicious_keywords)
+                is_pin = len(str_val) == 4 and str_val.isdigit()
+                
+                if is_suspicious_name or is_pin:
+                    clues.append({"name": name, "value": str_val})
+        return clues
+
+    def modify_variable(name, new_value):
+        setattr(store, name, new_value)
+        renpy.restart_interaction()
+
+    def toggle_bool(name, current_val):
+        modify_variable(name, not current_val)
+
+# ==============================================================================
+# THE LISTENER (BRUTE FORCE INPUT)
+# ==============================================================================
+
+screen cheat_mod_listener():
+    zorder 2000 # Ensure this is on top of almost everything
+    
+    # 1. The Key Listener
+    # We use a direct key statement which works even if config.keymap is messy
+    key "shift_K_c" action ToggleScreen("cheat_main_menu")
+    
+    # 2. The Visual Backup (Tiny Star)
+    # If the keybind fails, this proves the mod is loaded and gives you a mouse trigger
+    textbutton "★":
+        text_size 20
+        text_color "#ffffff55" # Semi-transparent white
+        text_hover_color "#ffffff"
+        align (1.0, 0.0) # Top Right Corner
+        action ToggleScreen("cheat_main_menu")
+
+init python:
+    # We force this screen into the overlay list.
+    # It will reload automatically on every interaction.
+    config.overlay_screens.append("cheat_mod_listener")
+
+# ==============================================================================
+# THE MAIN MENU UI
+# ==============================================================================
+
+screen cheat_main_menu():
+    modal True
+    zorder 2001
+    
+    default current_vars = get_variables()
+    default show_clues = False
+    default detected_clues = []
+    
+    # Darken background to show we are paused/in menu
+    add "#000000aa"
+    
+    frame:
+        align (0.5, 0.5)
+        xsize 1200
+        ysize 800
+        background "#222"
+        padding (20, 20)
+        
+        vbox:
+            spacing 10
+            
+            # --- HEADER ---
+            hbox:
+                spacing 20
+                text "UNIVERSAL MOD" size 30 color "#fff" bold True
+                null width 50
+                
+                text "Search:" color "#aaa" yalign 0.5
+                input value VariableInputValue(cheat_cfg, "search_term") length 20 color "#fff" allow "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789"
+                
+                textbutton "[REFRESH]" action SetScreenVariable("current_vars", get_variables()) text_color "#0f0"
+                textbutton "[FIND CLUES]" action [SetScreenVariable("show_clues", True), SetScreenVariable("detected_clues", find_clue_keys())] text_color "#f0f"
+                textbutton "[VAR EDITOR]" action SetScreenVariable("show_clues", False) text_color "#0ff"
+                
+                null width 50
+                textbutton "[X]" action Hide("cheat_main_menu") text_color "#f00"
+
+            null height 10
+
+            # --- CONTENT ---
+            if show_clues:
+                text "Detected Potential Keys/Passwords:" size 24 color "#ffaaaa"
+                viewport:
+                    scrollbars "vertical"
+                    mousewheel True
+                    draggable True
+                    ysize 650
+                    vbox:
+                        spacing 5
+                        if not detected_clues:
+                            text "No obvious clue keys found in top-level store." color "#666"
+                        for clue in detected_clues:
+                            hbox:
+                                xsize 900
+                                text "[clue[name]]" color "#ffcc00" xsize 400
+                                text " = " color "#fff"
+                                text "[clue[value]]" color "#00ccff"
+            else:
+                viewport:
+                    scrollbars "vertical"
+                    mousewheel True
+                    draggable True
+                    ysize 650
+                    vbox:
+                        spacing 4
+                        for item in current_vars:
+                            hbox:
+                                spacing 10
+                                # Variable Name
+                                text "[item[name]]":
+                                    min_width 400
+                                    color "#eee"
+                                    size 18
+                                    
+                                # Value Editor
+                                if item['type'] == 'bool':
+                                    textbutton str(item['value']):
+                                        action Function(toggle_bool, item['name'], item['value'])
+                                        text_color ("#00ff00" if item['value'] else "#ff0000")
+                                        
+                                elif item['type'] == 'int':
+                                    hbox:
+                                        spacing 2
+                                        textbutton "[-]" action Function(modify_variable, item['name'], item['value'] - 1) text_color "#bbb"
+                                        text "[item[value]]" color "#fff" min_width 50 xalign 0.5
+                                        textbutton "[+]" action Function(modify_variable, item['name'], item['value'] + 1) text_color "#bbb"
+                                        textbutton "[+100]" action Function(modify_variable, item['name'], item['value'] + 100) text_color "#bbb"
+                                        
+                                elif item['type'] == 'str':
+                                    text "\"[item[value]]\"" color "#aaa"
+                                
+                                elif item['is_obj']:
+                                    text "[Object]" color "#ffff00"
+
+
 
     def find_clue_keys():
         """
