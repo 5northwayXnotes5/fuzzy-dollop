@@ -4,7 +4,6 @@
 # ==============================================================================
 
 # --- 1. PYTHON LOGIC BLOCK ---
-# We use 'init -999' to ensure this runs before almost anything else in the game.
 init -999 python:
     import inspect
 
@@ -20,7 +19,6 @@ init -999 python:
 
     # --- Scanning Functions ---
     def get_variables(target_object=None):
-        """Scans the store or a specific object for editable variables."""
         if target_object is None:
             source = renpy.python.store_dicts['store']
         else:
@@ -34,35 +32,28 @@ init -999 python:
         results = []
         
         for name, value in source.items():
-            # Filter internals
             if any(name.startswith(p) for p in cheat_cfg.ignore_prefixes):
                 continue
             
-            # Filter search
             if cheat_cfg.search_term and cheat_cfg.search_term.lower() not in name.lower():
                 continue
 
-            # Identify types
             if isinstance(value, cheat_cfg.allowed_types):
                 results.append({"name": name, "value": value, "type": type(value).__name__, "is_obj": False})
             
-            # Identify Objects (dictionaries or classes)
             elif hasattr(value, "__dict__") or isinstance(value, dict):
                 if not (inspect.ismodule(value) or inspect.isfunction(value) or inspect.ismethod(value)):
                     results.append({"name": name, "value": value, "type": "Object", "is_obj": True})
 
-        # Sort by name
         results.sort(key=lambda x: x["name"])
         return results
 
     def find_clue_keys():
-        """Heuristic scanner for potential passwords."""
         source = renpy.python.store_dicts['store']
         clues = []
         suspicious_keywords = ["pass", "code", "pin", "key", "secret", "answer", "unlock"]
         
         for name, value in source.items():
-            # Skip internals
             if any(name.startswith(p) for p in cheat_cfg.ignore_prefixes):
                 continue
             
@@ -70,9 +61,7 @@ init -999 python:
                 str_val = str(value)
                 name_lower = name.lower()
                 
-                # Check 1: Name looks suspicious
                 is_suspicious_name = any(k in name_lower for k in suspicious_keywords)
-                # Check 2: Value looks like a PIN (4 digits)
                 is_pin = len(str_val) == 4 and str_val.isdigit()
                 
                 if is_suspicious_name or is_pin:
@@ -93,7 +82,6 @@ init -999 python:
             config.overlay_screens.append("cheat_mod_listener")
 
     config.after_load_callbacks.append(add_cheat_overlay)
-    # Try to add it immediately for the current session
     if "cheat_mod_listener" not in config.overlay_screens:
         config.overlay_screens.append("cheat_mod_listener")
 
@@ -103,13 +91,11 @@ init -999 python:
 screen cheat_mod_listener():
     zorder 2000
     
-    # 1. Keyboard Shortcut
     key "shift_K_c" action ToggleScreen("cheat_main_menu")
     
-    # 2. Visual Trigger (Top Right Star)
     textbutton "★":
         text_size 30
-        text_color "#ffffff44" # Semi-transparent
+        text_color "#ffffff44"
         text_hover_color "#ffffff"
         xalign 1.0
         yalign 0.0
@@ -123,7 +109,6 @@ screen cheat_main_menu():
     default show_clues = False
     default detected_clues = []
     
-    # Darken background
     add "#000000ee"
     
     frame:
@@ -145,12 +130,13 @@ screen cheat_main_menu():
                 text "Search:" color "#aaa" yalign 0.5
                 input value FieldInputValue(cheat_cfg, "search_term") length 20 color "#fff" allow "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789"
                 
-                textbutton "[REFRESH]" action SetScreenVariable("current_vars", get_variables()) text_color "#0f0"
-                textbutton "[FIND CLUES]" action [SetScreenVariable("show_clues", True), SetScreenVariable("detected_clues", find_clue_keys())] text_color "#f0f"
-                textbutton "[VAR EDITOR]" action SetScreenVariable("show_clues", False) text_color "#0ff"
+                # REMOVED BRACKETS FROM BUTTON TEXT TO PREVENT ERRORS
+                textbutton "REFRESH" action SetScreenVariable("current_vars", get_variables()) text_color "#0f0"
+                textbutton "FIND CLUES" action [SetScreenVariable("show_clues", True), SetScreenVariable("detected_clues", find_clue_keys())] text_color "#f0f"
+                textbutton "VAR EDITOR" action SetScreenVariable("show_clues", False) text_color "#0ff"
                 
                 null width 50
-                textbutton "[CLOSE]" action Hide("cheat_main_menu") text_color "#f00"
+                textbutton "CLOSE" action Hide("cheat_main_menu") text_color "#f00"
 
             null height 10
 
@@ -169,9 +155,12 @@ screen cheat_main_menu():
                         for clue in detected_clues:
                             hbox:
                                 xsize 900
-                                text "[clue[name]]" color "#ffcc00" xsize 400
+                                # USE DIRECT STRING ACCESS INSTEAD OF INTERPOLATION
+                                text clue['name']:
+                                    color "#ffcc00" 
+                                    min_width 400
                                 text " = " color "#fff"
-                                text "[clue[value]]" color "#00ccff"
+                                text clue['value'] color "#00ccff"
             else:
                 viewport:
                     scrollbars "vertical"
@@ -184,7 +173,7 @@ screen cheat_main_menu():
                             hbox:
                                 spacing 10
                                 # Variable Name
-                                text "[item[name]]":
+                                text item['name']:
                                     min_width 400
                                     color "#eee"
                                     size 18
@@ -194,20 +183,24 @@ screen cheat_main_menu():
                                 if item['type'] == 'bool':
                                     textbutton str(item['value']):
                                         action Function(toggle_bool, item['name'], item['value'])
-                                        text_color ("#00ff00" if item['value'] else "#ff0000")
+                                        # Conditional color using python logic
+                                        if item['value']:
+                                            text_color "#00ff00"
+                                        else:
+                                            text_color "#ff0000"
                                         
                                 elif item['type'] == 'int':
                                     hbox:
                                         spacing 5
-                                        textbutton "[-]" action Function(modify_variable, item['name'], item['value'] - 1) text_color "#bbb"
-                                        text "[item[value]]" color "#fff" min_width 60 xalign 0.5 yalign 0.5
-                                        textbutton "[+]" action Function(modify_variable, item['name'], item['value'] + 1) text_color "#bbb"
-                                        textbutton "[+100]" action Function(modify_variable, item['name'], item['value'] + 100) text_color "#bbb"
+                                        textbutton "-" action Function(modify_variable, item['name'], item['value'] - 1) text_color "#bbb"
+                                        text str(item['value']) color "#fff" min_width 60 xalign 0.5 yalign 0.5
+                                        textbutton "+" action Function(modify_variable, item['name'], item['value'] + 1) text_color "#bbb"
+                                        textbutton "+100" action Function(modify_variable, item['name'], item['value'] + 100) text_color "#bbb"
                                         
                                 elif item['type'] == 'str':
-                                    text "\"[item[value]]\"" color "#aaa" yalign 0.5
+                                    text str(item['value']) color "#aaa" yalign 0.5
                                 
                                 elif item['is_obj']:
-                                    text "[Object]" color "#ffff00" yalign 0.5
+                                    text "Object" color "#ffff00" yalign 0.5
 
 
